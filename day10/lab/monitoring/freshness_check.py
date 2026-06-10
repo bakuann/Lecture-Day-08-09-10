@@ -57,3 +57,68 @@ def check_manifest_freshness(
     if age_hours <= sla_hours:
         return "PASS", detail
     return "FAIL", {**detail, "reason": "freshness_sla_exceeded"}
+
+
+def _status_for(age_hours: float | None, sla_hours: float) -> str:
+    if age_hours is None:
+        return "WARN"
+    if age_hours <= sla_hours:
+        return "PASS"
+    # WARN band: trễ nhẹ (<= 1.5× SLA) cảnh báo, vượt xa thì FAIL.
+    if age_hours <= sla_hours * 1.5:
+        return "WARN"
+    return "FAIL"
+
+
+def check_dual_boundary_freshness(
+    manifest_path: Path,
+    *,
+    sla_hours: float = 24.0,
+    now: datetime | None = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Freshness ở 2 boundary (bonus +1):
+      - ingest  : tuổi của *snapshot dữ liệu nguồn* = now - max(exported_at)  (latest_exported_at)
+      - publish : tuổi của *lần chạy pipeline*      = now - run_timestamp
+
+    Trả về (status tổng hợp, detail có cả 2 boundary). status = nặng nhất trong 2 boundary
+    (FAIL > WARN > PASS) để alert đúng tầng đang trễ.
+    """
+    now = now or datetime.now(timezone.utc)
+    if not manifest_path.is_file():
+        return "FAIL", {"reason": "manifest_missing", "path": str(manifest_path)}
+
+    data: Dict[str, Any] = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    def age_of(key: str) -> Tuple[Any, float | None]:
+        raw = data.get(key)
+        dt = parse_iso(str(raw)) if raw else None
+        if dt is None:
+            return raw, None
+        return raw, (now - dt).total_seconds() / 3600.0
+
+    ing_raw, ing_age = age_of("latest_exported_at")
+    pub_raw, pub_age = age_of("run_timestamp")
+    ing_status = _status_for(ing_age, sla_hours)
+    pub_status = _status_for(pub_age, sla_hours)
+
+    rank = {"PASS": 0, "WARN": 1, "FAIL": 2}
+    overall = max((ing_status, pub_status), key=lambda s: rank[s])
+
+    detail = {
+        "sla_hours": sla_hours,
+        "ingest": {
+            "boundary": "max(exported_at) — tuổi snapshot nguồn",
+            "timestamp": ing_raw,
+            "age_hours": round(ing_age, 3) if ing_age is not None else None,
+            "status": ing_status,
+        },
+        "publish": {
+            "boundary": "run_timestamp — tuổi lần chạy pipeline",
+            "timestamp": pub_raw,
+            "age_hours": round(pub_age, 3) if pub_age is not None else None,
+            "status": pub_status,
+        },
+        "overall": overall,
+    }
+    return overall, detail

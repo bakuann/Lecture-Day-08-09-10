@@ -25,7 +25,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from monitoring.freshness_check import check_manifest_freshness
+# Tránh xung đột protobuf giữa chromadb/opentelemetry và google-genai (đặt trước import chromadb).
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
+# Console Windows (cp1252) không in được tiếng Việt → ép UTF-8.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+from monitoring.freshness_check import check_dual_boundary_freshness, check_manifest_freshness
 from quality.expectations import run_expectations
 from transform.cleaning_rules import clean_rows, load_raw_csv, write_cleaned_csv, write_quarantine_csv
 
@@ -46,8 +56,34 @@ def _log(path: Path, line: str) -> None:
         f.write(line + "\n")
 
 
+def cmd_chunk_docs(args: argparse.Namespace) -> int:
+    from transform.chunk_docs import chunk_documents, write_chunks_csv
+
+    rows = chunk_documents(Path(args.docs), chunk_size=args.chunk_size, overlap=args.overlap)
+    out = Path(args.out)
+    write_chunks_csv(out, rows)
+    by_doc: dict[str, int] = {}
+    for r in rows:
+        by_doc[r["doc_id"]] = by_doc.get(r["doc_id"], 0) + 1
+    print(f"chunked {len(rows)} chunks từ {len(by_doc)} docs → {out.relative_to(ROOT)}")
+    for d, n in sorted(by_doc.items()):
+        print(f"  {d}: {n} chunks")
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     run_id = args.run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%MZ")
+
+    # Luồng ingest từ tài liệu gốc .txt: chunk trước rồi dùng làm raw.
+    if getattr(args, "from_docs", False):
+        from transform.chunk_docs import chunk_documents, write_chunks_csv
+
+        docs_csv = ROOT / "data" / "raw" / "docs_chunked.csv"
+        rows_docs = chunk_documents(ROOT / "data" / "docs")
+        write_chunks_csv(docs_csv, rows_docs)
+        print(f"from_docs: chunked {len(rows_docs)} chunks → {docs_csv.relative_to(ROOT)}")
+        args.raw = str(docs_csv)
+
     raw_path = Path(args.raw)
     if not raw_path.is_file():
         print(f"ERROR: raw file not found: {raw_path}", file=sys.stderr)
@@ -121,8 +157,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     log(f"manifest_written={man_path.relative_to(ROOT)}")
 
-    status, fdetail = check_manifest_freshness(man_path, sla_hours=float(os.environ.get("FRESHNESS_SLA_HOURS", "24")))
+    sla_hours = float(os.environ.get("FRESHNESS_SLA_HOURS", "24"))
+    status, fdetail = check_manifest_freshness(man_path, sla_hours=sla_hours)
     log(f"freshness_check={status} {json.dumps(fdetail, ensure_ascii=False)}")
+
+    # Bonus: freshness 2 boundary (ingest snapshot + publish run) — log minh chứng.
+    dual_status, dual_detail = check_dual_boundary_freshness(man_path, sla_hours=sla_hours)
+    log(f"freshness_dual_boundary={dual_status} {json.dumps(dual_detail, ensure_ascii=False)}")
 
     log("PIPELINE_OK")
     return 0
@@ -131,14 +172,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 def cmd_embed_internal(cleaned_csv: Path, *, run_id: str, log) -> bool:
     try:
         import chromadb
-        from chromadb.utils import embedding_functions
     except ImportError:
         log("ERROR: chromadb chưa cài. pip install -r requirements.txt")
         return False
 
+    from transform.embedding_gemini import get_embedding_function
+
     db_path = os.environ.get("CHROMA_DB_PATH", str(ROOT / "chroma_db"))
     collection_name = os.environ.get("CHROMA_COLLECTION", "day10_kb")
-    model_name = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
     from transform.cleaning_rules import load_raw_csv as load_csv  # same loader
 
@@ -148,7 +189,7 @@ def cmd_embed_internal(cleaned_csv: Path, *, run_id: str, log) -> bool:
         return True
 
     client = chromadb.PersistentClient(path=db_path)
-    emb = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
+    emb = get_embedding_function()
     col = client.get_or_create_collection(name=collection_name, embedding_function=emb)
 
     ids = [r["chunk_id"] for r in rows]
@@ -183,7 +224,10 @@ def cmd_freshness(args: argparse.Namespace) -> int:
         print(f"manifest not found: {p}", file=sys.stderr)
         return 1
     sla = float(os.environ.get("FRESHNESS_SLA_HOURS", "24"))
-    status, detail = check_manifest_freshness(p, sla_hours=sla)
+    if args.dual:
+        status, detail = check_dual_boundary_freshness(p, sla_hours=sla)
+    else:
+        status, detail = check_manifest_freshness(p, sla_hours=sla)
     print(status, json.dumps(detail, ensure_ascii=False))
     return 0 if status != "FAIL" else 1
 
@@ -205,10 +249,23 @@ def main() -> int:
         action="store_true",
         help="Vẫn embed khi expectation halt (chỉ phục vụ demo có chủ đích).",
     )
+    p_run.add_argument(
+        "--from-docs",
+        action="store_true",
+        help="Ingest từ tài liệu gốc data/docs/*.txt (chunk thật) thay vì CSV export bẩn.",
+    )
     p_run.set_defaults(func=cmd_run)
+
+    p_ch = sub.add_parser("chunk-docs", help="Chunk data/docs/*.txt → data/raw/docs_chunked.csv")
+    p_ch.add_argument("--docs", default=str(ROOT / "data" / "docs"))
+    p_ch.add_argument("--out", default=str(ROOT / "data" / "raw" / "docs_chunked.csv"))
+    p_ch.add_argument("--chunk-size", type=int, default=360)
+    p_ch.add_argument("--overlap", type=int, default=1)
+    p_ch.set_defaults(func=cmd_chunk_docs)
 
     p_fr = sub.add_parser("freshness", help="Đọc manifest và kiểm tra SLA freshness")
     p_fr.add_argument("--manifest", required=True)
+    p_fr.add_argument("--dual", action="store_true", help="Đo 2 boundary: ingest (snapshot) + publish (run)")
     p_fr.set_defaults(func=cmd_freshness)
 
     args = parser.parse_args()

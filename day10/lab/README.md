@@ -132,13 +132,50 @@ lab/
 
 ```bash
 cd lab
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
+uv venv --python 3.12            # hoặc: python -m venv .venv
+uv pip install -r requirements.txt
+cp .env.example .env             # Windows: copy .env.example .env
 ```
 
-**Lần đầu** SentenceTransformers có thể tải model `all-MiniLM-L6-v2` (~90MB) — cần mạng.
+**Embedding qua Gemini API** (không tải model local — nhẹ máy). Điền `.env`:
+
+```
+GEMINI_API_KEY=<key tại https://aistudio.google.com/apikey>
+EMBEDDING_MODEL=text-embedding-004
+```
+
+> Embedding được **cache** theo nội dung (`artifacts/cache/embeddings/`) → rerun không tốn quota.
+
+---
+
+## Hai luồng ingest
+
+Pipeline hỗ trợ **2 nguồn đầu vào**:
+
+1. **CSV export bẩn** (mặc định) — `data/raw/policy_export_dirty.csv`, đã chunk sẵn, chứa lỗi để demo cleaning:
+   ```bash
+   python etl_pipeline.py run
+   ```
+
+2. **Tài liệu gốc .txt** — chunk thật từ `data/docs/*.txt` (có bước chunking: tách section + chunk_size/overlap, lấy `effective_date` từ header):
+   ```bash
+   python etl_pipeline.py chunk-docs                 # chỉ sinh data/raw/docs_chunked.csv
+   python etl_pipeline.py run --from-docs            # chunk + clean + validate + embed
+   ```
+   > Vì tài liệu gốc đã sạch nên hầu như không có quarantine; luồng này chứng minh pipeline chạy đúng từ nguồn canonical. Nên đặt collection riêng để khỏi đè bản dirty: `CHROMA_COLLECTION=day10_kb_docs`.
+
+---
+
+## Dashboard demo (giao diện trực quan)
+
+```bash
+streamlit run dashboard.py
+```
+
+Trực quan hoá: funnel ingest→clean→quarantine, lý do quarantine, coverage nguồn,
+expectation suite (warn/halt), freshness 2 boundary, grading 10 câu (Pass/Merit/Distinction),
+before/after eval, và truy vấn vector store trực tiếp. Phần clean/quarantine/expectation
+tính trực tiếp từ CSV (không cần API); embed/grading/query cần `GEMINI_API_KEY`.
 
 ---
 

@@ -1,19 +1,20 @@
 # Data contract — Lab Day 10 (tiếp nối artifact CS + IT Helpdesk)
-# Sinh viên bổ sung owner, SLA freshness, và nguồn canonical.
+# Source of truth cho allowlist + versioning. cleaning_rules.py & quality/schema.py đọc file này.
 
-version: "1.0"
+version: "1.1"
 dataset: "kb_chunk_export"
-owner_team: "__TODO__"
+owner_team: "Data Platform — Team Day10 (CS + IT Helpdesk KB)"
+owner_contact: "data-platform@company.internal"
 
 schema_cleaned:
   chunk_id:
     type: string
     required: true
-    description: "ID ổn định sau clean (thường hash hoặc doc_id + seq)"
+    description: "ID ổn định sau clean (sha256(doc_id|text|seq) — idempotent upsert key)"
   doc_id:
     type: string
     required: true
-    description: "Khóa logic tài liệu nguồn (vd policy_refund_v4)"
+    description: "Khóa logic tài liệu nguồn (vd policy_refund_v4); phải thuộc allowed_doc_ids"
   chunk_text:
     type: string
     required: true
@@ -22,39 +23,64 @@ schema_cleaned:
   effective_date:
     type: date
     required: true
+    constraints:
+      format: "YYYY-MM-DD"
   exported_at:
     type: datetime
     required: true
 
 quality_rules:
   - id: "no_duplicate_chunk_text"
-    severity: "warn"
-  - id: "no_stale_refund_window"
-    description: "Không được để chunk policy refund chứa cửa sổ 14 ngày (lệch so với v4 = 7 ngày)"
     severity: "halt"
+    description: "Không còn chunk_text trùng sau dedup (E9)"
+  - id: "no_stale_refund_window"
+    description: "Không để chunk policy refund chứa cửa sổ 14 ngày (lệch v4 = 7 ngày) — E3"
+    severity: "halt"
+  - id: "hr_leave_no_stale_10d_annual"
+    description: "Loại bản HR 2025 (10 ngày phép năm) khỏi cleaned — E6 + rule R-N3"
+    severity: "halt"
+  - id: "coverage_all_allowed_docs"
+    description: "Đủ 5 nguồn allowlist trong cleaned (gồm access_control_sop) — E7"
+    severity: "halt"
+  - id: "pydantic_schema_valid"
+    description: "Validate schema cleaned bằng pydantic — E10 (bonus)"
+    severity: "halt"
+  - id: "no_noise_markers"
+    description: "Không còn marker rác (!!! / Nội dung không rõ ràng) sau clean — E8"
+    severity: "warn"
 
 freshness:
-  measured_at: "publish"  # ingest | cleaned | publish
+  # Đo ở 2 boundary: ingest (exported_at nguồn) và publish (run_timestamp pipeline).
+  measured_at: ["ingest", "publish"]
   sla_hours: 24
-  alert_channel: "__TODO__"
+  alert_channel: "#data-quality (Slack) + data-platform@company.internal"
 
 canonical_sources:
   - path: "data/docs/policy_refund_v4.txt"
     doc_id: "policy_refund_v4"
+    owner: "CS Ops"
   - path: "data/docs/sla_p1_2026.txt"
     doc_id: "sla_p1_2026"
+    owner: "SRE / Incident"
   - path: "data/docs/it_helpdesk_faq.txt"
     doc_id: "it_helpdesk_faq"
+    owner: "IT Helpdesk"
   - path: "data/docs/hr_leave_policy.txt"
     doc_id: "hr_leave_policy"
+    owner: "HR"
+  - path: "data/docs/access_control_sop.txt"
+    doc_id: "access_control_sop"
+    owner: "IT Security"
 
-# Baseline allowlist export — nhóm mở rộng doc mới phải đồng bộ cleaning_rules + contract.
+# Allowlist export — SOURCE OF TRUTH (cleaning_rules._load_contract_config đọc trực tiếp).
+# Baseline thiếu access_control_sop → nhóm bổ sung để fix gq_d10_10.
 allowed_doc_ids:
   - policy_refund_v4
   - sla_p1_2026
   - it_helpdesk_faq
   - hr_leave_policy
+  - access_control_sop
 
-# Merit/Distinction: có thể đưa cutoff versioning vào env và tham chiếu ở đây (tránh hard-code trong code).
+# Rule-versioning KHÔNG hard-code trong code (Distinction d): cutoff đọc từ đây / env.
 policy_versioning:
   hr_leave_min_effective_date: "2026-01-01"

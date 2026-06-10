@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Day 10 — Pipeline Overview (A4)</title>
+<style>
+  @page { size: A4 portrait; margin: 8mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{
+    --ink:#1a2230; --muted:#5b6675; --line:#dde3ec;
+    --brand:#2563eb; --violet:#7c3aed; --ok:#16a34a; --warn:#d97706; --halt:#dc2626;
+    --bg-soft:#f4f7fb;
+  }
+  html,body{ background:#fff; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; }
+  .page{ width:194mm; margin:0 auto; padding:2mm; }
+  h1{ font-size:16pt; letter-spacing:.2px; }
+  .sub{ color:var(--muted); font-size:8pt; margin-top:1px; }
+  .hdr{ display:flex; justify-content:space-between; align-items:flex-end;
+        border-bottom:2px solid var(--brand); padding-bottom:4px; margin-bottom:6px; }
+  .badge{ font-size:7.5pt; font-weight:700; padding:2px 8px; border-radius:99px;
+          background:#ede9fe; color:var(--violet); border:1px solid #ddd6fe; }
+  .badge.ok{ background:#dcfce7; color:var(--ok); border-color:#bbf7d0; }
+  section{ margin-bottom:6px; }
+  .t{ font-size:8.5pt; font-weight:800; text-transform:uppercase; letter-spacing:.6px;
+      color:var(--brand); margin-bottom:3px; display:flex; align-items:center; gap:5px; }
+  .t::before{ content:""; width:9px; height:9px; border-radius:3px; background:var(--brand); }
+
+  /* flow */
+  .flow{ display:flex; align-items:stretch; gap:0; font-size:7.5pt; }
+  .step{ flex:1; background:var(--bg-soft); border:1px solid var(--line); border-radius:7px;
+         padding:5px 6px; position:relative; }
+  .step b{ font-size:8.5pt; display:block; }
+  .step span{ color:var(--muted); display:block; line-height:1.25; margin-top:1px; }
+  .arrow{ align-self:center; color:var(--brand); font-weight:800; padding:0 3px; font-size:10pt; }
+  .step .num{ position:absolute; top:-7px; right:6px; font-size:7pt; font-weight:800;
+              background:var(--brand); color:#fff; padding:1px 6px; border-radius:99px; }
+
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .card{ border:1px solid var(--line); border-radius:7px; padding:5px 7px; }
+  table{ width:100%; border-collapse:collapse; font-size:7.3pt; }
+  th,td{ text-align:left; padding:2px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th{ color:var(--muted); font-size:6.8pt; text-transform:uppercase; letter-spacing:.4px; }
+  td.n{ text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+  .pill{ font-size:6.6pt; font-weight:700; padding:1px 5px; border-radius:99px; }
+  .pill.halt{ background:#fee2e2; color:var(--halt); }
+  .pill.warn{ background:#fef3c7; color:var(--warn); }
+  code{ font-family:"Cascadia Code",Consolas,monospace; font-size:7pt; background:#f1f5f9;
+        padding:0 3px; border-radius:3px; }
+  .kpis{ display:flex; gap:7px; }
+  .kpi{ flex:1; border:1px solid var(--line); border-radius:7px; padding:5px 7px; text-align:center; }
+  .kpi .v{ font-size:14pt; font-weight:800; line-height:1; }
+  .kpi .l{ font-size:6.8pt; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
+  .funnel{ display:flex; align-items:center; gap:6px; font-size:8pt; }
+  .fbar{ height:16px; border-radius:4px; display:flex; align-items:center; color:#fff;
+         font-weight:700; font-size:7pt; padding-left:6px; }
+  .legend{ font-size:6.8pt; color:var(--muted); }
+  .foot{ margin-top:5px; font-size:6.8pt; color:var(--muted); text-align:center;
+         border-top:1px solid var(--line); padding-top:3px; }
+  ul{ margin-left:13px; font-size:7.4pt; line-height:1.45; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hdr">
+    <div>
+      <h1>🛰️ Day 10 — Data Pipeline & Observability</h1>
+      <div class="sub">ingest → clean → validate → embed (Gemini) → serve · case CS + IT Helpdesk · KB cho RAG/agent</div>
+    </div>
+    <div style="text-align:right">
+      <span class="badge ok">10/10 GRADING · DISTINCTION</span>
+      <div class="sub" style="margin-top:3px">Gemini embedding · ChromaDB · pydantic · Streamlit</div>
+    </div>
+  </div>
+
+  <!-- FLOW -->
+  <section>
+    <div class="t">Luồng pipeline</div>
+    <div class="flow">
+      <div class="step"><span class="num">IN</span><b>Ingest</b><span>2 nguồn: CSV bẩn / docs .txt<br>247 record / 39 doc_id</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">1</span><b>Clean</b><span>cách ly + sửa + thêm nguồn<br>cleaning_rules.py</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">2</span><b>Validate</b><span>10 expectation (warn/halt)<br>+ pydantic schema</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">3</span><b>Embed</b><span>Gemini → vector<br>ChromaDB day10_kb</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="num">4</span><b>Serve</b><span>eval / grading<br>/ agent Day 09</span></div>
+    </div>
+    <div style="margin-top:4px" class="funnel">
+      <div class="fbar" style="width:62%;background:var(--brand)">RAW 247</div>
+      <div class="arrow">→</div>
+      <div class="fbar" style="width:9%;background:var(--ok)">31</div>
+      <span class="legend"><b>cleaned 31</b> (sạch, lên vector)</span>
+      <div class="fbar" style="width:54%;background:var(--warn);margin-left:8px">QUARANTINE 216</div>
+    </div>
+    <div class="legend" style="margin-top:2px">⤷ quarantine = <b>cách ly kèm lý do</b> (audit được), KHÔNG xóa vĩnh viễn · mỗi run ghi <code>run_id</code> + manifest</div>
+    <div class="grid2" style="margin-top:5px">
+      <div class="card" style="padding:4px 7px">
+        <b style="font-size:7.6pt;color:var(--brand)">Luồng A — CSV export bẩn (mặc định)</b>
+        <div class="legend"><code>policy_export_dirty.csv</code> · đã chunk sẵn · 247→31, quarantine 216 · demo <b>LÀM SẠCH</b></div>
+      </div>
+      <div class="card" style="padding:4px 7px">
+        <b style="font-size:7.6pt;color:var(--violet)">Luồng B — Tài liệu gốc .txt (chunk thật)</b>
+        <div class="legend"><code>data/docs/*.txt</code> → cắt theo section · <b>size 360</b> / overlap <b>1 câu</b> / min <b>8</b> → 41 chunk, quar 0, grading 10/10</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KPIs -->
+  <section>
+    <div class="kpis">
+      <div class="kpi"><div class="v" style="color:var(--brand)">247→31</div><div class="l">raw → cleaned</div></div>
+      <div class="kpi"><div class="v" style="color:var(--warn)">216</div><div class="l">quarantine</div></div>
+      <div class="kpi"><div class="v" style="color:var(--ok)">5/5</div><div class="l">coverage nguồn</div></div>
+      <div class="kpi"><div class="v" style="color:var(--ok)">10/10</div><div class="l">grading pass</div></div>
+      <div class="kpi"><div class="v" style="color:var(--violet)">+3</div><div class="l">bonus</div></div>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <!-- DIRTY TYPES -->
+    <section class="card">
+      <div class="t">8 loại "bẩn" trong dữ liệu</div>
+      <table>
+        <tr><th>Loại</th><th>Xử lý</th><th>Row</th></tr>
+        <tr><td>Nguồn lạ/rác (invalid_*, legacy_*, decoy)</td><td>cách ly</td><td class="n">109</td></tr>
+        <tr><td>Trùng lặp nội dung</td><td>cách ly</td><td class="n">56</td></tr>
+        <tr><td>Bản HR 2025 cũ (theo ngày)</td><td>cách ly</td><td class="n">21</td></tr>
+        <tr><td>Bản HR 2025 (ngày 2026 — bẫy)</td><td>cách ly</td><td class="n">8</td></tr>
+        <tr><td>Cờ "Nội dung không rõ ràng" (R-N4)</td><td>cách ly</td><td class="n">8</td></tr>
+        <tr><td>Thiếu / sai định dạng ngày</td><td>cách ly</td><td class="n">12</td></tr>
+        <tr><td>Thiếu nội dung (rỗng)</td><td>cách ly</td><td class="n">8</td></tr>
+        <tr><td>Dấu rác !!! / ghi chú sync</td><td><b>sửa</b></td><td class="n">—</td></tr>
+        <tr><td style="color:var(--brand)"><b>Thiếu nguồn access_control_sop</b></td><td><b>THÊM</b></td><td class="n">+8</td></tr>
+      </table>
+    </section>
+
+    <!-- TECHNIQUES -->
+    <section class="card">
+      <div class="t">Kỹ thuật làm sạch (3 nhóm)</div>
+      <ul>
+        <li><b>Cách ly</b> (quarantine + reason): allowlist từ contract; thiếu ngày/rỗng; dedup theo nội dung chuẩn hoá.</li>
+        <li><b>Sửa/biến đổi:</b> chuẩn hoá ngày (DD/MM → ISO); bóc rác <code>R-N1</code>; gộp câu/cụm lặp <code>R-N2</code>; refund "14"→"7".</li>
+        <li><b>Lọc version 2 lớp:</b> theo ngày (cutoff đọc từ contract) <b>+</b> theo nội dung <code>R-N3</code> (bắt bẫy ngày-2026/nội-dung-2025).</li>
+      </ul>
+      <div class="legend" style="margin-top:3px">✦ Giữ "10 ngày/<u>năm</u>" của nghỉ ốm, chỉ chặn "10 ngày <u>phép năm</u>" 2025.</div>
+    </section>
+  </div>
+
+  <div class="grid2" style="margin-top:6px">
+    <!-- EXPECTATIONS -->
+    <section class="card">
+      <div class="t">Chốt chặn chất lượng (circuit breaker)</div>
+      <table>
+        <tr><th>Expectation mới</th><th>Mức</th><th>Ý nghĩa</th></tr>
+        <tr><td>coverage_all_allowed_docs</td><td><span class="pill halt">HALT</span></td><td>đủ 5 nguồn</td></tr>
+        <tr><td>no_duplicate_chunk_text</td><td><span class="pill halt">HALT</span></td><td>hết trùng</td></tr>
+        <tr><td>pydantic_schema_valid</td><td><span class="pill halt">HALT</span></td><td>schema đúng</td></tr>
+        <tr><td>no_noise_markers</td><td><span class="pill warn">WARN</span></td><td>cảnh báo rác</td></tr>
+      </table>
+      <div class="legend" style="margin-top:3px">HALT fail → <b>dừng pipeline (exit 2)</b>, không cho embed. (+ E1–E6 baseline)</div>
+    </section>
+
+    <!-- BONUS + RESULTS -->
+    <section class="card">
+      <div class="t">Bonus & Kết quả</div>
+      <table>
+        <tr><td>pydantic validate thật (quality/schema.py)</td><td class="n" style="color:var(--violet)">+2</td></tr>
+        <tr><td>Freshness 2 boundary (ingest + publish)</td><td class="n" style="color:var(--violet)">+1</td></tr>
+        <tr><td>Rule-versioning đọc từ contract (no hard-code)</td><td class="n" style="color:var(--ok)">Distinction d</td></tr>
+      </table>
+      <div style="margin-top:4px;font-size:7.4pt;line-height:1.5">
+        ✅ <b>grading 10/10</b>: contains_expected=true · hits_forbidden=false · top1_match=true<br>
+        ✅ <b>self-test 21/21</b> top-1 đúng · ✅ before/after: inject 1 forbidden → clean 0<br>
+        ✅ <b>idempotent</b>: upsert theo chunk_id + prune → index = snapshot
+      </div>
+    </section>
+  </div>
+
+  <!-- FRESHNESS strip -->
+  <section style="margin-top:6px">
+    <div class="t">Freshness 2 boundary (tuổi = now − timestamp, SLA 24h)</div>
+    <div class="grid3">
+      <div class="card"><b style="font-size:8pt">Ingest</b> <span class="pill warn">FAIL</span><br>
+        <span class="legend">now − max(exported_at) = tuổi snapshot nguồn → cũ (cố ý, cảnh báo)</span></div>
+      <div class="card"><b style="font-size:8pt">Publish</b> <span class="pill" style="background:#dcfce7;color:var(--ok)">PASS</span><br>
+        <span class="legend">now − run_timestamp = tuổi lần chạy → vừa chạy</span></div>
+      <div class="card"><b style="font-size:8pt">Overall</b><br>
+        <span class="legend">= mốc nặng nhất (FAIL&gt;WARN&gt;PASS); WARN band ≤ 1.5× SLA</span></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    Stack: <b>Gemini API</b> (embedding, không model local) · <b>ChromaDB</b> (vector store: upsert+prune) ·
+    <b>pydantic</b> (schema) · <b>Streamlit</b> (dashboard) ·
+    Chạy: <code>uv run python etl_pipeline.py run</code> · <code>uv run streamlit run dashboard.py</code>
+  </div>
+
+</div>
+</body>
+</html>

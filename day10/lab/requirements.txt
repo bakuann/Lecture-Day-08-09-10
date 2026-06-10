@@ -1,8 +1,19 @@
 # Day 10 Lab — Data Pipeline & Observability
-# pip install -r requirements.txt
+#   uv pip install -r requirements.txt   (hoặc: pip install -r requirements.txt)
+#
+# Embedding dùng Gemini API (google-genai) — KHÔNG tải model local, nhẹ máy.
 
 python-dotenv>=1.0.0
-chromadb>=0.4.22
-sentence-transformers>=2.6.0
+chromadb>=0.5.0
+google-genai>=1.0.0
+pydantic>=2.5.0
 pyyaml>=6.0.1
 pytest>=8.0.0
+# Ghim protobuf 3.20.x: tránh xung đột giữa opentelemetry (chromadb) và protobuf mới
+# (lỗi "Descriptors cannot be created directly"). google-genai dùng REST nên không cần protobuf mới.
+protobuf<3.21
+
+# Dashboard demo (streamlit) — trực quan hoá pipeline/quality/eval/grading
+streamlit>=1.36.0
+altair>=5.2.0
+pandas>=2.2.0
